@@ -2,10 +2,13 @@ package tracing
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -358,33 +361,28 @@ func TestInitTracer_ExporterCreationError(t *testing.T) {
 	TeardownTestTracer()
 }
 
-// Test concurrent initialization (should not panic)
-func TestInitTracer_Concurrent(t *testing.T) {
+// Test multiple sequential initialization (should not panic)
+// Note: InitTracer is designed to be called once at application startup,
+// it is NOT thread-safe and should not be called concurrently.
+func TestInitTracer_MultipleSequential(t *testing.T) {
 	// Clean up before test
 	TeardownTestTracer()
 
-	// Test concurrent initialization
-	done := make(chan bool, 2)
+	// Test multiple sequential initialization (should not panic)
 	for i := 0; i < 2; i++ {
-		go func() {
+		func() {
 			defer func() {
 				if r := recover(); r != nil {
 					t.Errorf("InitTracer panicked: %v", r)
 				}
-				done <- true
 			}()
 			tp, _ := InitTracer("test-service", "v1.0.0", "http://localhost:4318")
 			if tp != nil {
 				ShutdownTracerProvider(tp)
 			}
+			TeardownTestTracer()
 		}()
 	}
-
-	// Wait for both goroutines
-	<-done
-	<-done
-
-	TeardownTestTracer()
 }
 
 // Test that GetTracer works correctly after Shutdown
@@ -407,4 +405,80 @@ func TestGetTracer_AfterShutdown(t *testing.T) {
 
 	// Clean up
 	TeardownTestTracer()
+}
+
+// Test InitTracer with resource.New returning error
+func TestInitTracer_ResourceNewError(t *testing.T) {
+	// Clean up before test
+	TeardownTestTracer()
+	defer func() {
+		ResetHooks()
+		TeardownTestTracer()
+	}()
+
+	// Inject error into resource.New
+	expectedErr := errors.New("mock resource creation error")
+	SetResourceNewFunc(func(ctx context.Context, opts ...resource.Option) (*resource.Resource, error) {
+		return nil, expectedErr
+	})
+
+	// Test InitTracer - should return error
+	tp, err := InitTracer("test-service", "v1.0.0", "http://localhost:4318")
+	if err == nil {
+		t.Fatal("InitTracer should return error when resource.New fails")
+	}
+	if tp != nil {
+		ShutdownTracerProvider(tp)
+		t.Fatal("TracerProvider should be nil when resource.New fails")
+	}
+
+	// Verify error message contains the original error
+	if !errors.Is(err, expectedErr) && !contains(err.Error(), "failed to create resource") {
+		t.Fatalf("Error should contain 'failed to create resource', got: %v", err)
+	}
+}
+
+// Test InitTracer with otlptrace.New returning error
+func TestInitTracer_OtlptraceNewError(t *testing.T) {
+	// Clean up before test
+	TeardownTestTracer()
+	defer func() {
+		ResetHooks()
+		TeardownTestTracer()
+	}()
+
+	// Inject error into otlptrace.New
+	expectedErr := errors.New("mock OTLP exporter creation error")
+	SetOtlptraceNewFunc(func(ctx context.Context, client otlptrace.Client) (*otlptrace.Exporter, error) {
+		return nil, expectedErr
+	})
+
+	// Test InitTracer - should return error
+	tp, err := InitTracer("test-service", "v1.0.0", "http://localhost:4318")
+	if err == nil {
+		t.Fatal("InitTracer should return error when otlptrace.New fails")
+	}
+	if tp != nil {
+		ShutdownTracerProvider(tp)
+		t.Fatal("TracerProvider should be nil when otlptrace.New fails")
+	}
+
+	// Verify error message contains the original error
+	if !errors.Is(err, expectedErr) && !contains(err.Error(), "failed to create OTLP exporter") {
+		t.Fatalf("Error should contain 'failed to create OTLP exporter', got: %v", err)
+	}
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

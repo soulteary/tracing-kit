@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -47,4 +49,20 @@ func ForceFlushTracerProvider(tp *sdktrace.TracerProvider) {
 	if tp != nil {
 		_ = tp.ForceFlush(context.Background())
 	}
+}
+
+// ResetHooks resets the hook functions to their default implementations
+func ResetHooks() {
+	resourceNewFunc = resource.New
+	otlptraceNewFunc = otlptrace.New
+}
+
+// SetResourceNewFunc sets a custom resource.New function for testing
+func SetResourceNewFunc(fn func(ctx context.Context, opts ...resource.Option) (*resource.Resource, error)) {
+	resourceNewFunc = fn
+}
+
+// SetOtlptraceNewFunc sets a custom otlptrace.New function for testing
+func SetOtlptraceNewFunc(fn func(ctx context.Context, client otlptrace.Client) (*otlptrace.Exporter, error)) {
+	otlptraceNewFunc = fn
 }

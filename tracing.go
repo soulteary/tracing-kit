@@ -19,13 +19,17 @@ var (
 	tracerProvider *sdktrace.TracerProvider
 	tracer         trace.Tracer
 	serviceName    string // Store service name for fallback
+
+	// Hooks for testing - allows injecting errors for testing error paths
+	resourceNewFunc  = resource.New
+	otlptraceNewFunc = otlptrace.New
 )
 
 // InitTracer initializes OpenTelemetry tracer
 func InitTracer(svcName, serviceVersion, otlpEndpoint string) (*sdktrace.TracerProvider, error) {
 	serviceName = svcName
 	// Create resource with service information
-	res, err := resource.New(context.Background(),
+	res, err := resourceNewFunc(context.Background(),
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
 			semconv.ServiceVersion(serviceVersion),
@@ -45,7 +49,7 @@ func InitTracer(svcName, serviceVersion, otlpEndpoint string) (*sdktrace.TracerP
 			otlptracehttp.WithEndpoint(otlpEndpoint),
 			otlptracehttp.WithInsecure(), // For development, use WithTLSClientConfig in production
 		)
-		otlpExporter, err := otlptrace.New(context.Background(), client)
+		otlpExporter, err := otlptraceNewFunc(context.Background(), client)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
 		}
