@@ -284,7 +284,7 @@ func TestMyTracedFunction(t *testing.T) {
 
 ## 环境要求
 
-- Go 1.21 或更高版本
+- Go 1.26 或更高版本
 - OpenTelemetry Go SDK v1.39.0+
 
 ## 许可证

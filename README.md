@@ -284,7 +284,7 @@ func TestMyTracedFunction(t *testing.T) {
 
 ## Requirements
 
-- Go 1.21 or later
+- Go 1.26 or later
 - OpenTelemetry Go SDK v1.39.0+
 
 ## License
