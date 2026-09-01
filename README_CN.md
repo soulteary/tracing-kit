@@ -1,7 +1,7 @@
 # tracing-kit
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/soulteary/tracing-kit.svg)](https://pkg.go.dev/github.com/soulteary/tracing-kit)
-[![Go Report Card](https://goreportcard.com/badge/github.com/soulteary/tracing-kit)](https://goreportcard.com/report/github.com/soulteary/tracing-kit)
+[![Go Report Card](.github/goreportcard.svg)](.github/goreportcard-report.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![codecov](https://codecov.io/gh/soulteary/tracing-kit/graph/badge.svg)](https://codecov.io/gh/soulteary/tracing-kit)
 
