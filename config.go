@@ -3,6 +3,8 @@ package tracing
 import (
 	"crypto/tls"
 	"time"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 // Config configures tracer initialisation.
@@ -53,6 +55,20 @@ type Config struct {
 // left unset. Recording every trace on a busy service is a self-inflicted
 // load problem for both the service and the collector.
 const DefaultSampleRatio = 0.1
+
+// sampler returns the sampler this configuration asks for.
+//
+// SampleNone maps to NeverSample rather than a zero ratio. Wrapping a
+// zero-ratio sampler in ParentBased still RECORDS any span whose incoming
+// parent carries the sampled bit, so a service that had explicitly opted out
+// of sampling went on recording and exporting spans for every distributed
+// request that reached it with a sampled parent.
+func (c Config) sampler() sdktrace.Sampler {
+	if c.SampleNone {
+		return sdktrace.NeverSample()
+	}
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.sampleRatio()))
+}
 
 // sampleRatio returns the effective ratio.
 func (c Config) sampleRatio() float64 {

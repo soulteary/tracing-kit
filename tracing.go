@@ -21,6 +21,11 @@ var (
 	tracer         trace.Tracer
 	serviceName    string // Store service name for fallback
 
+	// enabled records whether an exporter was actually configured. A no-op
+	// provider is still a non-nil provider, so presence alone cannot answer
+	// IsEnabled.
+	enabled bool
+
 	// Hooks for testing - allows injecting errors for testing error paths
 	resourceNewFunc  = resource.New
 	otlptraceNewFunc = otlptrace.New
@@ -82,8 +87,18 @@ func InitTracerWithConfig(cfg Config) (*sdktrace.TracerProvider, error) {
 			sdktrace.WithResource(res),
 			sdktrace.WithSampler(sdktrace.NeverSample()),
 		)
+
+		// Install it globally like the configured path does. Returning early
+		// without doing so left a previously configured provider in place, so
+		// reconfiguring a process with an empty endpoint kept instrumentation
+		// that uses otel.Tracer exporting through the OLD provider.
+		otel.SetTracerProvider(tp)
+
 		tracerProvider = tp
 		tracer = tp.Tracer(serviceName)
+		// Tracing is disabled: IsEnabled must say so, whatever the docs say
+		// about the provider being non-nil.
+		enabled = false
 		return tp, nil
 	}
 
@@ -106,7 +121,7 @@ func InitTracerWithConfig(cfg Config) (*sdktrace.TracerProvider, error) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(otlpExporter),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.sampleRatio()))),
+		sdktrace.WithSampler(cfg.sampler()),
 	)
 
 	// Set global tracer provider
@@ -120,6 +135,7 @@ func InitTracerWithConfig(cfg Config) (*sdktrace.TracerProvider, error) {
 
 	tracerProvider = tp
 	tracer = tp.Tracer(serviceName)
+	enabled = true
 
 	return tp, nil
 }
@@ -152,9 +168,14 @@ func GetTracer() trace.Tracer {
 	return t
 }
 
-// IsEnabled returns whether tracing is enabled
+// IsEnabled reports whether tracing is enabled, i.e. an OTLP endpoint was
+// configured and an exporter installed.
+//
+// An empty OTLPEndpoint yields a no-op provider so callers can defer Shutdown
+// unconditionally; that provider is non-nil, so its presence is not the
+// question being asked here.
 func IsEnabled() bool {
 	globalMu.RLock()
 	defer globalMu.RUnlock()
-	return tracerProvider != nil && tracer != nil
+	return enabled && tracerProvider != nil && tracer != nil
 }

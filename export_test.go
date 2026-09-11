@@ -5,59 +5,22 @@ package tracing
 // It used to be test_helpers.go, a normal source file that imported "testing".
 // That linked the testing package into every production binary depending on
 // this library -- registering its -test.* flags into flag.CommandLine -- and
-// exposed SetResourceNewFunc, SetOtlptraceNewFunc and ResetHooks as public
-// API, letting anything in the process swap the trace exporter at runtime.
+// exposed the exporter hooks below as public API, letting anything in the
+// process swap the trace exporter at runtime.
+//
+// The four helpers the README documents for consumers (SetupTestTracer,
+// TeardownTestTracer, ShutdownTracerProvider, ForceFlushTracerProvider) stay
+// in normal package code, in testhelper.go; they avoid the "testing" import by
+// accepting the TestingT interface instead of *testing.T. Only the hooks are
+// test-only, because nothing outside this package should be able to replace
+// the exporter.
 
 import (
 	"context"
-	"testing"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
-
-// SetupTestTracer sets up a tracer for testing
-func SetupTestTracer(t *testing.T) (*sdktrace.TracerProvider, *tracetest.InMemoryExporter) {
-	exporter := tracetest.NewInMemoryExporter()
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSyncer(exporter),
-	)
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
-
-	// Set package-level variables to ensure GetTracer() works
-	tracerProvider = tp
-	tracer = tp.Tracer("test-service")
-	serviceName = "test-service"
-
-	return tp, exporter
-}
-
-// TeardownTestTracer cleans up the tracer
-func TeardownTestTracer() {
-	tracer = nil
-	tracerProvider = nil
-	serviceName = ""
-	otel.SetTracerProvider(nil)
-}
-
-// ShutdownTracerProvider safely shuts down a tracer provider, ignoring errors in test cleanup
-func ShutdownTracerProvider(tp *sdktrace.TracerProvider) {
-	if tp != nil {
-		_ = tp.Shutdown(context.Background())
-	}
-}
-
-// ForceFlushTracerProvider safely flushes a tracer provider, ignoring errors in test cleanup
-func ForceFlushTracerProvider(tp *sdktrace.TracerProvider) {
-	if tp != nil {
-		_ = tp.ForceFlush(context.Background())
-	}
-}
 
 // ResetHooks resets the hook functions to their default implementations
 func ResetHooks() {
