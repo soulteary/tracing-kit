@@ -1,5 +1,13 @@
 package tracing
 
+// This file is compiled only during tests.
+//
+// It used to be test_helpers.go, a normal source file that imported "testing".
+// That linked the testing package into every production binary depending on
+// this library -- registering its -test.* flags into flag.CommandLine -- and
+// exposed SetResourceNewFunc, SetOtlptraceNewFunc and ResetHooks as public
+// API, letting anything in the process swap the trace exporter at runtime.
+
 import (
 	"context"
 	"testing"

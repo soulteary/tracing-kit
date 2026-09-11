@@ -52,13 +52,18 @@ func TestInitTracer_WithoutEndpoint(t *testing.T) {
 	// Clean up before test
 	TeardownTestTracer()
 
-	// Test with empty endpoint (should return nil)
+	// With no endpoint, tracing is disabled -- but a non-nil provider is
+	// returned so the usual "tp, err := InitTracer(...); defer tp.Shutdown(ctx)"
+	// does not panic on a nil dereference, which (nil, nil) guaranteed.
 	tp, err := InitTracer("test-service", "v1.0.0", "")
 	if err != nil {
 		t.Fatalf("InitTracer should not return error with empty endpoint: %v", err)
 	}
-	if tp != nil {
-		t.Fatal("TracerProvider should be nil when endpoint is empty")
+	if tp == nil {
+		t.Fatal("TracerProvider should be a no-op provider, not nil, when the endpoint is empty")
+	}
+	if err := tp.Shutdown(context.Background()); err != nil {
+		t.Errorf("Shutdown on the no-op provider error = %v", err)
 	}
 
 	// Clean up
