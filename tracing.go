@@ -3,7 +3,9 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -68,6 +70,40 @@ func InitTracerWithConfig(cfg Config) (*sdktrace.TracerProvider, error) {
 
 	serviceName = cfg.ServiceName
 
+	// The disabled path is decided FIRST, before resource discovery.
+	//
+	// Resource discovery reads OTEL_RESOURCE_ATTRIBUTES and can fail on a
+	// malformed value. Running it first meant that failure returned before
+	// the no-op provider was installed, so reconfiguring a process to an
+	// empty endpoint left the previous exporter active instead of disabling
+	// tracing -- and a disabled tracer needs no export resource anyway.
+	if cfg.OTLPEndpoint == "" {
+		// No exporter configured: hand back a no-op provider so callers can
+		// defer Shutdown unconditionally.
+		tp := sdktrace.NewTracerProvider(
+			sdktrace.WithSampler(sdktrace.NeverSample()),
+		)
+
+		// Retire the provider being replaced, and install the new one
+		// globally like the configured path does.
+		//
+		// Returning early without installing left a previously configured
+		// provider in place, so instrumentation using otel.Tracer kept
+		// exporting through it. Replacing the global is not enough either:
+		// a tracer handle obtained BEFORE reconfiguration -- the usual
+		// package-level `var tracer = otel.Tracer("x")` -- still belongs to
+		// the old SDK provider and goes on recording and exporting through
+		// the old endpoint. Shutting it down stops that.
+		retirePreviousProvider(tp)
+
+		tracerProvider = tp
+		tracer = tp.Tracer(serviceName)
+		// Tracing is disabled: IsEnabled must say so, whatever the docs say
+		// about the provider being non-nil.
+		enabled = false
+		return tp, nil
+	}
+
 	// Create resource with service information
 	res, err := resourceNewFunc(context.Background(),
 		resource.WithAttributes(
@@ -78,28 +114,6 @@ func InitTracerWithConfig(cfg Config) (*sdktrace.TracerProvider, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
-	if cfg.OTLPEndpoint == "" {
-		// No exporter configured: hand back a no-op provider so callers can
-		// defer Shutdown unconditionally.
-		tp := sdktrace.NewTracerProvider(
-			sdktrace.WithResource(res),
-			sdktrace.WithSampler(sdktrace.NeverSample()),
-		)
-
-		// Install it globally like the configured path does. Returning early
-		// without doing so left a previously configured provider in place, so
-		// reconfiguring a process with an empty endpoint kept instrumentation
-		// that uses otel.Tracer exporting through the OLD provider.
-		otel.SetTracerProvider(tp)
-
-		tracerProvider = tp
-		tracer = tp.Tracer(serviceName)
-		// Tracing is disabled: IsEnabled must say so, whatever the docs say
-		// about the provider being non-nil.
-		enabled = false
-		return tp, nil
 	}
 
 	opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(cfg.OTLPEndpoint)}
@@ -124,8 +138,8 @@ func InitTracerWithConfig(cfg Config) (*sdktrace.TracerProvider, error) {
 		sdktrace.WithSampler(cfg.sampler()),
 	)
 
-	// Set global tracer provider
-	otel.SetTracerProvider(tp)
+	// Set global tracer provider, retiring the one being replaced.
+	retirePreviousProvider(tp)
 
 	// Set global propagator
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
@@ -138,6 +152,31 @@ func InitTracerWithConfig(cfg Config) (*sdktrace.TracerProvider, error) {
 	enabled = true
 
 	return tp, nil
+}
+
+// retirePreviousProvider installs next as the global provider and shuts the
+// previous SDK provider down.
+//
+// Callers hold tracer handles obtained from whatever provider was installed
+// when they asked -- a package-level `var tracer = otel.Tracer("svc")` is the
+// common shape -- and those handles keep their provider alive. Swapping the
+// global alone therefore leaves the old pipeline recording and exporting to
+// the old endpoint while IsEnabled reports the new state.
+//
+// Must be called with globalMu held.
+func retirePreviousProvider(next *sdktrace.TracerProvider) {
+	previous := tracerProvider
+
+	otel.SetTracerProvider(next)
+
+	if previous != nil && previous != next {
+		// Bounded: a wedged exporter must not hang reconfiguration.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := previous.Shutdown(ctx); err != nil {
+			log.Printf("[tracing] shutting down the replaced tracer provider: %v", err)
+		}
+	}
 }
 
 // Shutdown gracefully shuts down the tracer provider

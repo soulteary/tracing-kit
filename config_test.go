@@ -3,10 +3,12 @@ package tracing
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"sync"
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -210,5 +212,75 @@ func TestDocumentedTestHelpersAreImportable(t *testing.T) {
 
 	if len(exporter.GetSpans()) != 1 {
 		t.Errorf("recorded %d spans, want 1", len(exporter.GetSpans()))
+	}
+}
+
+// --- Codex review round 2 (PR #2) ---
+
+// TestReconfiguringToDisabledRetiresTheOldProvider is the regression test for
+// replacing only the GLOBAL provider. A tracer handle obtained before
+// reconfiguration -- the usual package-level `var tracer = otel.Tracer("x")` --
+// still belongs to the old SDK provider, so it kept recording and exporting
+// through the old endpoint while IsEnabled() reported false.
+func TestReconfiguringToDisabledRetiresTheOldProvider(t *testing.T) {
+	t.Cleanup(TeardownTestTracer)
+
+	// Stand in for a configured provider, and take a handle from it the way a
+	// package-level tracer variable would.
+	previous, exporter := SetupTestTracer(t)
+	handle := otel.Tracer("held-before-reconfiguration")
+
+	_, span := handle.Start(context.Background(), "before")
+	span.End()
+	if len(exporter.GetSpans()) != 1 {
+		t.Fatalf("setup recorded %d spans, want 1", len(exporter.GetSpans()))
+	}
+
+	if _, err := InitTracerWithConfig(Config{ServiceName: "svc", OTLPEndpoint: ""}); err != nil {
+		t.Fatalf("InitTracerWithConfig error = %v", err)
+	}
+	if IsEnabled() {
+		t.Fatal("IsEnabled() = true after reconfiguring to an empty endpoint")
+	}
+
+	// The old provider must be shut down, so the handle held across the
+	// reconfiguration records nothing more.
+	before := len(exporter.GetSpans())
+	_, span = handle.Start(context.Background(), "after")
+	span.End()
+	if got := len(exporter.GetSpans()); got != before {
+		t.Errorf("a tracer handle held across reconfiguration recorded %d more spans; the old provider is still live", got-before)
+	}
+
+	_ = previous
+}
+
+// TestEmptyEndpointIsHandledBeforeResourceDiscovery: resource discovery reads
+// OTEL_RESOURCE_ATTRIBUTES and can fail on a malformed value. Running it first
+// meant that failure returned before the no-op provider was installed, so
+// reconfiguring to an empty endpoint left the previous exporter active instead
+// of disabling tracing.
+func TestEmptyEndpointIsHandledBeforeResourceDiscovery(t *testing.T) {
+	t.Cleanup(func() {
+		ResetHooks()
+		TeardownTestTracer()
+	})
+
+	SetResourceNewFunc(func(context.Context, ...resource.Option) (*resource.Resource, error) {
+		return nil, errors.New("malformed OTEL_RESOURCE_ATTRIBUTES")
+	})
+
+	tp, err := InitTracerWithConfig(Config{ServiceName: "svc", OTLPEndpoint: ""})
+	if err != nil {
+		t.Fatalf("InitTracerWithConfig error = %v; a disabled tracer needs no export resource", err)
+	}
+	if tp == nil {
+		t.Fatal("InitTracerWithConfig returned a nil provider")
+	}
+	if IsEnabled() {
+		t.Error("IsEnabled() = true with an empty endpoint")
+	}
+	if otel.GetTracerProvider() != trace.TracerProvider(tp) {
+		t.Error("the no-op provider was not installed globally when resource discovery failed")
 	}
 }
