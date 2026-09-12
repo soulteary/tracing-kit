@@ -29,11 +29,21 @@ go get github.com/soulteary/tracing-kit
 ### Initialize Tracer
 
 ```go
-import tracing "github.com/soulteary/tracing-kit"
+import (
+    "crypto/tls"
+
+    tracing "github.com/soulteary/tracing-kit"
+)
 
 func main() {
-    // Initialize tracer with OTLP endpoint
-    tp, err := tracing.InitTracer("my-service", "v1.0.0", "localhost:4318")
+    tp, err := tracing.InitTracerWithConfig(tracing.Config{
+        ServiceName:    "my-service",
+        ServiceVersion: "v1.0.0",
+        OTLPEndpoint:   "collector.internal:4318",
+        TLSConfig:      &tls.Config{MinVersion: tls.VersionTLS12},
+        SampleRatio:    0.1,
+        ExportTimeout:  10 * time.Second,
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -43,12 +53,19 @@ func main() {
         tracing.Shutdown(ctx)
     }()
 
-    // Check if tracing is enabled
     if tracing.IsEnabled() {
         log.Println("Tracing is enabled")
     }
 }
 ```
+
+With an empty `OTLPEndpoint`, tracing is disabled and a **no-op provider** is
+returned — so `defer tp.Shutdown(ctx)` is always safe.
+
+`InitTracer(name, version, endpoint)` is the older three-argument form. It keeps
+its previous behaviour — **plaintext export, and every span sampled** — so
+existing callers are unaffected. Prefer `InitTracerWithConfig` for anything that
+leaves a trusted local network.
 
 ### Create and Manage Spans
 
@@ -188,10 +205,13 @@ func TracingMiddleware(next http.Handler) http.Handler {
 
 | Function | Description |
 |----------|-------------|
-| `InitTracer(serviceName, version, endpoint)` | Initialize tracer with OTLP HTTP exporter |
-| `Shutdown(ctx)` | Gracefully shutdown the tracer provider |
-| `GetTracer()` | Get the global tracer (returns noop if not initialized) |
-| `IsEnabled()` | Check if tracing is enabled |
+| `InitTracerWithConfig(cfg)` | Initialize from a `Config` — TLS, sampling, export timeout |
+| `InitTracer(serviceName, version, endpoint)` | Three-argument form; plaintext export, samples everything |
+| `Shutdown(ctx)` | Gracefully shut down the tracer provider |
+| `GetTracer()` | The global tracer (no-op when not initialized) |
+| `IsEnabled()` | Whether tracing is enabled |
+| `ShutdownTracerProvider(tp)` | Shut down a specific provider |
+| `ForceFlushTracerProvider(tp)` | Flush a specific provider's pending spans |
 
 ### Span Operations
 
@@ -213,39 +233,81 @@ func TracingMiddleware(next http.Handler) http.Handler {
 
 ## Configuration
 
-The tracer can be configured through environment variables or programmatically:
+```go
+type Config struct {
+    ServiceName    string      // required
+    ServiceVersion string
+    OTLPEndpoint   string      // empty disables tracing
+    Insecure       bool        // plaintext HTTP export
+    TLSConfig      *tls.Config // used when Insecure is false; nil = system defaults
+    SampleRatio    float64     // 0 means DefaultSampleRatio (0.1)
+    SampleNone     bool        // explicit "sample nothing"
+    ExportTimeout  time.Duration
+}
+```
 
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `OTEL_SERVICE_NAME` | Service name (overridden by parameter) | - |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint (use parameter instead) | - |
+| Field | Default | Notes |
+|-------|---------|-------|
+| `ServiceName` | — | required |
+| `ServiceVersion` | empty | reported as the service version attribute |
+| `OTLPEndpoint` | empty | empty disables tracing and returns a no-op provider |
+| `Insecure` | `false` | see the warning below |
+| `TLSConfig` | `nil` | system defaults when `Insecure` is false |
+| `SampleRatio` | `DefaultSampleRatio` (0.1) | **zero means the default**, not "sample nothing" |
+| `SampleNone` | `false` | the explicit way to sample nothing |
+| `ExportTimeout` | SDK default | bound on an export attempt |
 
-Example with environment detection:
+### Transport security
+
+**`Insecure: true` sends trace data over plaintext HTTP.** Traces carry request
+paths, user identifiers, SQL and error detail, so exporting them in the clear
+across any network wider than loopback discloses all of it. Use it only for a
+collector reached over loopback or a trusted local network:
 
 ```go
-tp, err := tracing.InitTracer(
-    "my-service",
-    "v1.0.0",
-    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-)
+// Development
+cfg := tracing.Config{ServiceName: "svc", OTLPEndpoint: "localhost:4318", Insecure: true}
+
+// Production
+cfg = tracing.Config{
+    ServiceName:  "svc",
+    OTLPEndpoint: "collector.internal:4318",
+    TLSConfig:    &tls.Config{MinVersion: tls.VersionTLS12},
+}
+```
+
+### Sampling
+
+The sampler is **`ParentBased`**, so a trace that arrived sampled stays sampled
+across your service — a ratio applies to traces this service starts, not to spans
+it continues.
+
+`SampleRatio`'s zero value means `DefaultSampleRatio` (10%), so leaving the field
+unset cannot silently change behaviour. To record nothing, say so:
+
+```go
+cfg := tracing.Config{ServiceName: "svc", OTLPEndpoint: endpoint, SampleNone: true}
+```
+
+### Reading the endpoint from the environment
+
+There is no built-in environment-variable handling; read them yourself:
+
+```go
+cfg := tracing.Config{
+    ServiceName:    os.Getenv("OTEL_SERVICE_NAME"),
+    ServiceVersion: buildVersion,
+    OTLPEndpoint:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    SampleRatio:    0.1,
+}
 ```
 
 ## Test Coverage
 
-This project maintains 100% test coverage:
-
-| File | Coverage |
-|------|----------|
-| tracing.go | 100% |
-| span.go | 100% |
-| propagation.go | 100% |
-| test_helpers.go | 100% |
-| **Total** | **100%** |
-
-Run tests with coverage:
+Measured on this tree with `go test ./... -cover`: **99.1% of statements**.
 
 ```bash
-go test -coverprofile=coverage.out ./...
+go test ./... -coverprofile=coverage.out -covermode=atomic
 go tool cover -func=coverage.out
 ```
 
@@ -260,7 +322,9 @@ import (
 )
 
 func TestMyTracedFunction(t *testing.T) {
-    // Setup test tracer with in-memory exporter
+    // Setup test tracer with in-memory exporter.
+    // SetupTestTracer takes a tracing.TestingT (Helper + Cleanup), which
+    // *testing.T satisfies, so a custom harness can pass its own.
     tp, exporter := tracing.SetupTestTracer(t)
     defer func() {
         tracing.ShutdownTracerProvider(tp)
@@ -282,9 +346,41 @@ func TestMyTracedFunction(t *testing.T) {
 }
 ```
 
+## Upgrade Notes (v1.5.0)
+
+`InitTracer` keeps its signature **and its previous behaviour**, so existing
+callers are unaffected. Everything here is additive, except one nil that became a
+value and three test hooks that are no longer exported.
+
+- **TLS and sampling are configurable.** They were hard-coded —
+  `otlptracehttp.WithInsecure()` and `AlwaysSample()` — with comments telling the
+  reader to change them in production and no way to do so. **Every deployment
+  exported traces in cleartext and recorded 100% of them.**
+  `InitTracerWithConfig` takes a `Config` with `Insecure`, `TLSConfig`,
+  `SampleRatio`, `SampleNone` and `ExportTimeout`. If you read the old README and
+  believed you had configured TLS or a ratio, you had not — move to
+  `InitTracerWithConfig`.
+- **`InitTracer` with no endpoint returns a no-op provider, not `(nil, nil)`.**
+  The idiomatic `tp, err := InitTracer(...)` followed by
+  `defer tp.Shutdown(ctx)` was a nil dereference whenever tracing was switched
+  off. If you added a nil check for that, it is now unnecessary.
+- **The package-level tracer state is synchronised.** `InitTracer` racing with
+  `GetTracer` or `IsEnabled` was a data race, never caught because the tests run
+  sequentially.
+- **`SetResourceNewFunc`, `SetOtlptraceNewFunc` and `ResetHooks` are gone from the
+  public API.** They lived in `test_helpers.go`, a normal source file importing
+  `testing` — which linked the testing package into every production binary
+  depending on this library, registered its `-test.*` flags into
+  `flag.CommandLine`, and let anything in the process swap the trace exporter at
+  runtime. The file is now `export_test.go`, compiled only during tests.
+- **`SetupTestTracer` takes a `tracing.TestingT`** (`Helper` + `Cleanup`) rather
+  than `*testing.T`. `*testing.T` satisfies it, so existing calls compile
+  unchanged.
+- **Requirements said Go 1.26**; `go.mod` requires `1.27.0`.
+
 ## Requirements
 
-- Go 1.26 or later
+- **Go 1.27+** (`go.mod` declares `go 1.27.0`)
 - OpenTelemetry Go SDK v1.39.0+
 
 ## License

@@ -29,11 +29,21 @@ go get github.com/soulteary/tracing-kit
 ### 初始化 Tracer
 
 ```go
-import tracing "github.com/soulteary/tracing-kit"
+import (
+    "crypto/tls"
+
+    tracing "github.com/soulteary/tracing-kit"
+)
 
 func main() {
-    // 使用 OTLP 端点初始化 Tracer
-    tp, err := tracing.InitTracer("my-service", "v1.0.0", "localhost:4318")
+    tp, err := tracing.InitTracerWithConfig(tracing.Config{
+        ServiceName:    "my-service",
+        ServiceVersion: "v1.0.0",
+        OTLPEndpoint:   "collector.internal:4318",
+        TLSConfig:      &tls.Config{MinVersion: tls.VersionTLS12},
+        SampleRatio:    0.1,
+        ExportTimeout:  10 * time.Second,
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -43,12 +53,18 @@ func main() {
         tracing.Shutdown(ctx)
     }()
 
-    // 检查追踪是否已启用
     if tracing.IsEnabled() {
-        log.Println("追踪已启用")
+        log.Println("链路追踪已启用")
     }
 }
 ```
+
+`OTLPEndpoint` 为空时，链路追踪被禁用并返回一个**空实现 provider**——因此
+`defer tp.Shutdown(ctx)` 始终是安全的。
+
+`InitTracer(name, version, endpoint)` 是旧的三参数形式。它保持原有行为——**明文导出，
+且所有 span 全量采样**——因此现有调用方不受影响。任何会离开可信本地网络的场景，请使用
+`InitTracerWithConfig`。
 
 ### 创建和管理 Span
 
@@ -188,6 +204,7 @@ func TracingMiddleware(next http.Handler) http.Handler {
 
 | 函数 | 描述 |
 |------|------|
+| `InitTracerWithConfig(cfg)` | 从 `Config` 初始化 —— TLS、采样、导出超时 |
 | `InitTracer(serviceName, version, endpoint)` | 使用 OTLP HTTP 导出器初始化 Tracer |
 | `Shutdown(ctx)` | 优雅关闭 Tracer Provider |
 | `GetTracer()` | 获取全局 Tracer（未初始化时返回 noop） |
@@ -213,39 +230,79 @@ func TracingMiddleware(next http.Handler) http.Handler {
 
 ## 配置
 
-Tracer 可以通过环境变量或编程方式配置：
+```go
+type Config struct {
+    ServiceName    string      // 必填
+    ServiceVersion string
+    OTLPEndpoint   string      // 为空则禁用链路追踪
+    Insecure       bool        // 明文 HTTP 导出
+    TLSConfig      *tls.Config // Insecure 为 false 时使用；nil 表示系统默认
+    SampleRatio    float64     // 0 表示 DefaultSampleRatio（0.1）
+    SampleNone     bool        // 显式的"不采样"
+    ExportTimeout  time.Duration
+}
+```
 
-| 环境变量 | 描述 | 默认值 |
-|---------|------|--------|
-| `OTEL_SERVICE_NAME` | 服务名称（被参数覆盖） | - |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 端点（建议使用参数） | - |
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `ServiceName` | — | 必填 |
+| `ServiceVersion` | 空 | 作为 service version 属性上报 |
+| `OTLPEndpoint` | 空 | 为空则禁用链路追踪并返回空实现 provider |
+| `Insecure` | `false` | 见下方警告 |
+| `TLSConfig` | `nil` | `Insecure` 为 false 时，nil 表示系统默认 |
+| `SampleRatio` | `DefaultSampleRatio`（0.1） | **零值表示默认值**，不是"不采样" |
+| `SampleNone` | `false` | 显式表达"不采样"的方式 |
+| `ExportTimeout` | SDK 默认 | 单次导出尝试的时限 |
 
-使用环境检测的示例：
+### 传输安全
+
+**`Insecure: true` 会以明文 HTTP 发送链路数据。** 链路里带着请求路径、用户标识、SQL 和
+错误细节，因此在任何比 loopback 更宽的网络上明文导出，就等于把这些全部暴露。只在
+collector 经由 loopback 或可信本地网络可达时使用它：
 
 ```go
-tp, err := tracing.InitTracer(
-    "my-service",
-    "v1.0.0",
-    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-)
+// 开发环境
+cfg := tracing.Config{ServiceName: "svc", OTLPEndpoint: "localhost:4318", Insecure: true}
+
+// 生产环境
+cfg = tracing.Config{
+    ServiceName:  "svc",
+    OTLPEndpoint: "collector.internal:4318",
+    TLSConfig:    &tls.Config{MinVersion: tls.VersionTLS12},
+}
+```
+
+### 采样
+
+采样器是 **`ParentBased`** 的，因此一条到达时已被采样的链路会在你的服务里继续保持被
+采样——比率作用于本服务发起的链路，而不是它延续的 span。
+
+`SampleRatio` 的零值表示 `DefaultSampleRatio`（10%），因此漏填这个字段不会静默改变行为。
+要一条都不记录，请明说：
+
+```go
+cfg := tracing.Config{ServiceName: "svc", OTLPEndpoint: endpoint, SampleNone: true}
+```
+
+### 从环境变量读取端点
+
+本库没有内置的环境变量处理，请自己读取：
+
+```go
+cfg := tracing.Config{
+    ServiceName:    os.Getenv("OTEL_SERVICE_NAME"),
+    ServiceVersion: buildVersion,
+    OTLPEndpoint:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    SampleRatio:    0.1,
+}
 ```
 
 ## 测试覆盖率
 
-本项目保持 100% 的测试覆盖率：
-
-| 文件 | 覆盖率 |
-|------|--------|
-| tracing.go | 100% |
-| span.go | 100% |
-| propagation.go | 100% |
-| test_helpers.go | 100% |
-| **总计** | **100%** |
-
-运行测试并查看覆盖率：
+在本仓库上用 `go test ./... -cover` 实测：**语句覆盖率 99.1%**。
 
 ```bash
-go test -coverprofile=coverage.out ./...
+go test ./... -coverprofile=coverage.out -covermode=atomic
 go tool cover -func=coverage.out
 ```
 
@@ -261,6 +318,8 @@ import (
 
 func TestMyTracedFunction(t *testing.T) {
     // 使用内存导出器设置测试 Tracer
+    // SetupTestTracer 接收 tracing.TestingT（Helper + Cleanup），
+    // *testing.T 满足该接口，因此自定义测试框架也可以传自己的实现。
     tp, exporter := tracing.SetupTestTracer(t)
     defer func() {
         tracing.ShutdownTracerProvider(tp)
@@ -282,9 +341,34 @@ func TestMyTracedFunction(t *testing.T) {
 }
 ```
 
+## 升级说明（v1.5.0）
+
+`InitTracer` 的签名**和原有行为**都保持不变，因此现有调用方不受影响。除了一处 nil 变成
+了真实值、以及三个测试钩子不再导出之外，其余都是新增。
+
+- **TLS 与采样现在可配置。** 它们此前是硬编码的——`otlptracehttp.WithInsecure()` 和
+  `AlwaysSample()`——注释里让读者"到生产环境请改掉"，却没有任何途径可改。
+  **于是每个部署都在以明文导出链路数据，并且 100% 全量记录。**
+  `InitTracerWithConfig` 接收一个带 `Insecure`、`TLSConfig`、`SampleRatio`、
+  `SampleNone` 和 `ExportTimeout` 的 `Config`。如果你读了旧 README 并以为自己已经配好了
+  TLS 或采样比率——并没有，请迁移到 `InitTracerWithConfig`。
+- **没有端点时 `InitTracer` 返回空实现 provider，而不是 `(nil, nil)`。** 惯用写法
+  `tp, err := InitTracer(...)` 接 `defer tp.Shutdown(ctx)` 在链路追踪关闭时会空指针
+  解引用。如果你为此加过 nil 判断，现在不需要了。
+- **包级 tracer 状态已加锁。** `InitTracer` 与 `GetTracer` 或 `IsEnabled` 并发是一个
+  数据竞争，因为测试是顺序执行的，所以从未被发现。
+- **`SetResourceNewFunc`、`SetOtlptraceNewFunc` 和 `ResetHooks` 已从公开 API 移除。**
+  它们此前位于 `test_helpers.go`——一个导入了 `testing` 的普通源文件——这会把 testing 包
+  链接进每个依赖本库的生产二进制、把它的 `-test.*` 参数注册进 `flag.CommandLine`，并让
+  进程里任何代码都能在运行时替换链路导出器。该文件现已更名为 `export_test.go`，只在测试
+  时编译。
+- **`SetupTestTracer` 接收 `tracing.TestingT`**（`Helper` + `Cleanup`）而不是
+  `*testing.T`。`*testing.T` 满足该接口，因此现有调用无需改动即可编译。
+- **环境要求里写的是 Go 1.26**；`go.mod` 需要 `1.27.0`。
+
 ## 环境要求
 
-- Go 1.26 或更高版本
+- **Go 1.27+**（`go.mod` 声明 `go 1.27.0`）
 - OpenTelemetry Go SDK v1.39.0+
 
 ## 许可证
