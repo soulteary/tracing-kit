@@ -341,6 +341,22 @@ func TestMyTracedFunction(t *testing.T) {
 }
 ```
 
+## 升级说明（v1.5.1）
+
+无需任何改动。`tracing.go` 里改了一行 import path；API、行为和依赖都没有变化。
+
+- **语义约定改为 `semconv/v1.43.0`（此前 `v1.21.0`）。** 这个包比原来新了 22 个规范
+  版本，也是本模块已经依赖的 `go.opentelemetry.io/otel` v1.46.0 里自带的当前版本 ——
+  所以 `go.mod` 和 `go.sum` 完全没有变动，不会多下载任何东西。
+- **导出的 resource 与原来逐字节一致。** 本模块用到的两个 helper —— `ServiceName` 和
+  `ServiceVersion` —— 在两个版本里签名相同，返回的 key 也相同：`service.name` 和
+  `service.version`。`InitTracer` 原本就没有设置 schema URL，现在也没有：resource 由
+  `resource.WithAttributes` 和 `resource.WithFromEnv` 构建，所以改动前后
+  `SchemaURL()` 都是 `""`。你的 collector 看到的数据没有任何差别。
+- **环境要求里写的是 OpenTelemetry Go SDK v1.39.0+**；`go.mod` 要求
+  `go.opentelemetry.io/otel` v1.46.0，而 `semconv/v1.43.0` 最早出现在 otel v1.45.0，
+  所以 v1.39.0 本来就编译不过这行 import。该行现已与 `go.mod` 对齐。
+
 ## 升级说明（v1.5.0）
 
 `InitTracer` 的签名**和原有行为**都保持不变，因此现有调用方不受影响。除了一处 nil 变成
@@ -369,7 +385,7 @@ func TestMyTracedFunction(t *testing.T) {
 ## 环境要求
 
 - **Go 1.27+**（`go.mod` 声明 `go 1.27.0`）
-- OpenTelemetry Go SDK v1.39.0+
+- OpenTelemetry Go SDK v1.46.0+（`go.mod` 要求 `go.opentelemetry.io/otel` v1.46.0）
 
 ## 许可证
 

@@ -346,6 +346,26 @@ func TestMyTracedFunction(t *testing.T) {
 }
 ```
 
+## Upgrade Notes (v1.5.1)
+
+Nothing to do. One import path changed inside `tracing.go`; no API, no
+behaviour and no dependency moved.
+
+- **The semantic conventions are `semconv/v1.43.0` (were `v1.21.0`).** That
+  package is 22 spec releases newer and is the current one bundled in the
+  `go.opentelemetry.io/otel` v1.46.0 this module already requires — so `go.mod`
+  and `go.sum` are untouched. Nothing is downloaded that was not there before.
+- **The exported resource is byte-for-byte what it was.** The two helpers this
+  module calls, `ServiceName` and `ServiceVersion`, have the same signature in
+  both versions and return the same keys, `service.name` and `service.version`.
+  `InitTracer` never set a schema URL and still does not: the resource is built
+  with `resource.WithAttributes` and `resource.WithFromEnv`, so `SchemaURL()` is
+  `""` before and after. Your collector sees no difference.
+- **Requirements said OpenTelemetry Go SDK v1.39.0+**; `go.mod` requires
+  `go.opentelemetry.io/otel` v1.46.0, and `semconv/v1.43.0` first shipped in
+  otel v1.45.0, so v1.39.0 could not have compiled this import anyway. The line
+  now matches `go.mod`.
+
 ## Upgrade Notes (v1.5.0)
 
 `InitTracer` keeps its signature **and its previous behaviour**, so existing
@@ -381,7 +401,7 @@ value and three test hooks that are no longer exported.
 ## Requirements
 
 - **Go 1.27+** (`go.mod` declares `go 1.27.0`)
-- OpenTelemetry Go SDK v1.39.0+
+- OpenTelemetry Go SDK v1.46.0+ (`go.mod` requires `go.opentelemetry.io/otel` v1.46.0)
 
 ## License
 
