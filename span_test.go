@@ -11,10 +11,10 @@ import (
 
 func TestStartSpan(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test StartSpan
@@ -38,10 +38,10 @@ func TestStartSpan(t *testing.T) {
 
 func TestStartSpan_WithOptions(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test StartSpan with options
@@ -61,7 +61,7 @@ func TestStartSpan_WithOptions(t *testing.T) {
 
 func TestStartSpan_WithNoopTracer(t *testing.T) {
 	// Clean up to use noop tracer
-	TeardownTestTracer()
+	Uninstall()
 
 	// Test StartSpan with noop tracer
 	ctx := context.Background()
@@ -80,10 +80,10 @@ func TestStartSpan_WithNoopTracer(t *testing.T) {
 
 func TestSetSpanAttributes(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -104,10 +104,10 @@ func TestSetSpanAttributes(t *testing.T) {
 
 func TestSetSpanAttributes_EmptyMap(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -124,10 +124,10 @@ func TestSetSpanAttributes_EmptyMap(t *testing.T) {
 
 func TestSetSpanAttributes_NilMap(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -146,10 +146,10 @@ func TestSetSpanAttributes_NilMap(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_String(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -166,10 +166,10 @@ func TestSetSpanAttributesFromMap_String(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_Int(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -186,10 +186,10 @@ func TestSetSpanAttributesFromMap_Int(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_Int64(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -206,10 +206,10 @@ func TestSetSpanAttributesFromMap_Int64(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_Float64(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -226,10 +226,10 @@ func TestSetSpanAttributesFromMap_Float64(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_Bool(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -247,10 +247,10 @@ func TestSetSpanAttributesFromMap_Bool(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_Default(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -268,10 +268,10 @@ func TestSetSpanAttributesFromMap_Default(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_MixedTypes(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -293,10 +293,10 @@ func TestSetSpanAttributesFromMap_MixedTypes(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_EmptyMap(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -311,10 +311,10 @@ func TestSetSpanAttributesFromMap_EmptyMap(t *testing.T) {
 
 func TestSetSpanAttributesFromMap_NilMap(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -333,10 +333,10 @@ func TestSetSpanAttributesFromMap_NilMap(t *testing.T) {
 
 func TestRecordError_WithError(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -353,10 +353,10 @@ func TestRecordError_WithError(t *testing.T) {
 
 func TestRecordError_WithNilError(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -372,10 +372,10 @@ func TestRecordError_WithNilError(t *testing.T) {
 
 func TestRecordError_WithWrappedError(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -391,10 +391,10 @@ func TestRecordError_WithWrappedError(t *testing.T) {
 
 func TestSetSpanStatus(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -414,10 +414,10 @@ func TestSetSpanStatus(t *testing.T) {
 
 func TestSetSpanStatus_EmptyDescription(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -431,10 +431,10 @@ func TestSetSpanStatus_EmptyDescription(t *testing.T) {
 
 func TestGetSpanFromContext_WithSpan(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -451,10 +451,10 @@ func TestGetSpanFromContext_WithSpan(t *testing.T) {
 
 func TestGetSpanFromContext_WithoutSpan(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test GetSpanFromContext without span in context
@@ -468,10 +468,10 @@ func TestGetSpanFromContext_WithoutSpan(t *testing.T) {
 
 func TestGetSpanFromContext_NilContext(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test GetSpanFromContext with nil context (should not panic)
@@ -491,10 +491,10 @@ func TestGetSpanFromContext_NilContext(t *testing.T) {
 // Test all span operations together
 func TestSpanOperations_Integration(t *testing.T) {
 	// Setup test tracer
-	tp, exporter := SetupTestTracer(t)
+	tp, exporter := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -532,7 +532,7 @@ func TestSpanOperations_Integration(t *testing.T) {
 	// Verify spans were exported
 	// Note: WithSyncer exports synchronously, but we need to ensure span is ended
 	// ForceFlush to ensure spans are exported
-	ForceFlushTracerProvider(tp)
+	forceFlush(tp)
 	spans := exporter.GetSpans()
 	// Spans might not be immediately available, so we check if exporter has any spans
 	// If no spans, it's acceptable as long as no panic occurred
@@ -544,10 +544,10 @@ func TestSpanOperations_Integration(t *testing.T) {
 // Test edge cases with various attribute types
 func TestSetSpanAttributesFromMap_EdgeCases(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span

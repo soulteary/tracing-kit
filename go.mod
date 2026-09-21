@@ -1,4 +1,4 @@
-module github.com/soulteary/tracing-kit
+module github.com/soulteary/tracing-kit/v2
 
 go 1.27.0
 

@@ -1,0 +1,28 @@
+version: 2
+
+# Minor and patch updates are grouped into one PR; majors stay separate,
+# because for this module a dependency major is a judgement call -- the
+# OpenTelemetry SDK's are what decide this library's own major releases.
+#
+# The release gate is an action too, so a silently stale action would be a
+# stale release check.
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
