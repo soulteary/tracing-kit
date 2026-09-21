@@ -13,10 +13,10 @@ import (
 
 func TestExtractTraceContext(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span and inject it
@@ -39,10 +39,10 @@ func TestExtractTraceContext(t *testing.T) {
 
 func TestExtractTraceContext_WithTraceparent(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create headers with traceparent
@@ -68,10 +68,10 @@ func TestExtractTraceContext_WithTraceparent(t *testing.T) {
 
 func TestExtractTraceContext_EmptyHeaders(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test with empty headers
@@ -86,10 +86,10 @@ func TestExtractTraceContext_EmptyHeaders(t *testing.T) {
 
 func TestExtractTraceContext_NilHeaders(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test with nil headers (should not panic)
@@ -106,10 +106,10 @@ func TestExtractTraceContext_NilHeaders(t *testing.T) {
 
 func TestExtractTraceContext_InvalidTraceparent(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test with invalid traceparent
@@ -126,10 +126,10 @@ func TestExtractTraceContext_InvalidTraceparent(t *testing.T) {
 
 func TestInjectTraceContext(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -154,10 +154,10 @@ func TestInjectTraceContext(t *testing.T) {
 
 func TestInjectTraceContext_EmptyContext(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Test with context without span
@@ -170,10 +170,10 @@ func TestInjectTraceContext_EmptyContext(t *testing.T) {
 
 func TestInjectTraceContext_NilHeaders(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -193,10 +193,10 @@ func TestInjectTraceContext_NilHeaders(t *testing.T) {
 
 func TestInjectAndExtract_RoundTrip(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -351,8 +351,8 @@ func TestExtractTraceContext_WithBaggage(t *testing.T) {
 		propagation.Baggage{},
 	))
 	defer func() {
-		ShutdownTracerProvider(tp)
-		otel.SetTracerProvider(nil)
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create headers with baggage
@@ -378,8 +378,8 @@ func TestInjectTraceContext_WithBaggage(t *testing.T) {
 		propagation.Baggage{},
 	))
 	defer func() {
-		ShutdownTracerProvider(tp)
-		otel.SetTracerProvider(nil)
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span
@@ -400,10 +400,10 @@ func TestInjectTraceContext_WithBaggage(t *testing.T) {
 
 func TestExtractTraceContext_MultipleHeaders(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create headers with multiple trace-related headers
@@ -425,10 +425,10 @@ func TestExtractTraceContext_MultipleHeaders(t *testing.T) {
 
 func TestInjectTraceContext_MultipleHeaders(t *testing.T) {
 	// Setup test tracer
-	tp, _ := SetupTestTracer(t)
+	tp, _ := setupTracer(t)
 	defer func() {
-		ShutdownTracerProvider(tp)
-		TeardownTestTracer()
+		shutdownProvider(tp)
+		Uninstall()
 	}()
 
 	// Create a span

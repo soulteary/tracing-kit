@@ -1,45 +1,64 @@
 # tracing-kit
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/soulteary/tracing-kit.svg)](https://pkg.go.dev/github.com/soulteary/tracing-kit)
+[![Go Reference](https://pkg.go.dev/badge/github.com/soulteary/tracing-kit/v2.svg)](https://pkg.go.dev/github.com/soulteary/tracing-kit/v2)
 [![Go Report Card](.github/goreportcard.svg)](.github/goreportcard-report.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![codecov](https://codecov.io/gh/soulteary/tracing-kit/graph/badge.svg)](https://codecov.io/gh/soulteary/tracing-kit)
 
 [English](README.md)
 
-一个轻量级的 Go 语言 OpenTelemetry 分布式追踪库。提供简单易用的 API，用于追踪上下文传播、Span 管理以及支持 OTLP 导出的 Tracer 初始化。
+一个轻量级的 Go 语言 OpenTelemetry 分布式追踪库：Span 辅助函数、基于普通 string map 的
+追踪上下文传播，以及一行搞定的 OTLP 导出初始化。
 
-## 功能特性
+## 包结构
 
-- **Tracer 初始化** - 轻松设置带 OTLP HTTP 导出器的 OpenTelemetry Tracer
-- **Span 管理** - 创建、配置和管理 Span 的简单 API
-- **上下文传播** - 提取和注入追踪上下文，实现分布式追踪
-- **属性支持** - 类型安全的 Span 属性设置方法
-- **错误记录** - 记录错误并自动设置状态
-- **测试辅助** - 使用内存导出器测试追踪代码的工具函数
+| 包 | 依赖 | 用途 |
+|----|------|------|
+| `github.com/soulteary/tracing-kit/v2` | 仅 OpenTelemetry **API** | 创建 Span、传播上下文、安装 provider |
+| `.../v2/otlp` | 额外引入 OpenTelemetry SDK、OTLP/HTTP 导出器、gRPC、protobuf | 在应用启动时初始化链路追踪 |
+| `.../v2/tracingtest` | 额外引入 SDK 的 `tracetest` 导出器 | 测试带追踪的代码 |
+
+根包既不 import SDK，也不 import 任何导出器。这正是 OpenTelemetry 自己要求的分层：
+埋点代码只依赖 API，由应用来选择 SDK 和导出器。只创建 Span 的库，两者都不会链接进去。
+
+实测数字 —— 只 import 根包的程序，与根包里还带着导出器的 v1.5.1 对比：
+
+| | v1.5.1 | v2.0.0 |
+|---|---:|---:|
+| 二进制体积 | 18,095,419 B | 7,319,801 B（**−59.5%**） |
+| 链接进来的非标准库包 | 191 | 42 |
+| 参与构建的模块 | 22 | 8 |
+| 你的 `go.mod` 里的 `// indirect` 依赖 | 21 | 7 |
+| 你的 `go.sum` 里的模块 | 28 | 13 |
+
+而 import `.../v2/otlp` 的程序，代价与 v1.5.1 完全一致。用到导出器才为它付费。
 
 ## 安装
 
 ```bash
-go get github.com/soulteary/tracing-kit
+go get github.com/soulteary/tracing-kit/v2
 ```
 
 ## 快速开始
 
 ### 初始化 Tracer
 
+在应用启动时调用一次：
+
 ```go
 import (
     "crypto/tls"
+    "time"
 
-    tracing "github.com/soulteary/tracing-kit"
+    tracing "github.com/soulteary/tracing-kit/v2"
+    "github.com/soulteary/tracing-kit/v2/otlp"
 )
 
 func main() {
-    tp, err := tracing.InitTracerWithConfig(tracing.Config{
+    tp, err := otlp.InitTracerWithConfig(otlp.Config{
         ServiceName:    "my-service",
         ServiceVersion: "v1.0.0",
-        OTLPEndpoint:   "collector.internal:4318",
+        Endpoint:       "collector.internal:4318",
         TLSConfig:      &tls.Config{MinVersion: tls.VersionTLS12},
         SampleRatio:    0.1,
         ExportTimeout:  10 * time.Second,
@@ -50,7 +69,7 @@ func main() {
     defer func() {
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
         defer cancel()
-        tracing.Shutdown(ctx)
+        tp.Shutdown(ctx)
     }()
 
     if tracing.IsEnabled() {
@@ -59,18 +78,38 @@ func main() {
 }
 ```
 
-`OTLPEndpoint` 为空时，链路追踪被禁用并返回一个**空实现 provider**——因此
-`defer tp.Shutdown(ctx)` 始终是安全的。
+`Endpoint` 为空时，链路追踪被禁用，返回的 provider **什么都不记录**而不是 nil ——
+因此 `defer tp.Shutdown(ctx)` 始终是安全的。
 
-`InitTracer(name, version, endpoint)` 是旧的三参数形式。它保持原有行为——**明文导出，
+`otlp.InitTracer(name, version, endpoint)` 是旧的三参数形式。它保持原有行为——**明文导出，
 且所有 span 全量采样**——因此现有调用方不受影响。任何会离开可信本地网络的场景，请使用
 `InitTracerWithConfig`。
 
+### 换用你自己的导出器
+
+`tracing.Install` 接收一个接口 —— `Tracer` 加 `Shutdown` —— 所以任何 provider 都以同样的
+方式安装，没有谁强迫你用 `otlp` 子包：
+
+```go
+exp, _ := stdouttrace.New()
+tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp))
+
+tracing.Install(tp, "my-service")
+tracing.SetDefaultPropagator()
+defer tracing.Uninstall()
+```
+
+`SetDefaultPropagator` 单独成为一次调用是有意为之。OpenTelemetry 的全局 propagator 在被
+设置之前什么都不传递；而一个自己不导出任何 span 的服务，仍然必须把收到的追踪上下文传给
+下一跳 —— 所以即使链路追踪是关着的，也值得把传播打开。
+
 ### 创建和管理 Span
+
+下面这些只需要根包，因此也是库代码应该写的样子：
 
 ```go
 import (
-    tracing "github.com/soulteary/tracing-kit"
+    tracing "github.com/soulteary/tracing-kit/v2"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 )
@@ -108,7 +147,7 @@ func processRequest(ctx context.Context) error {
 
 func doWork(ctx context.Context) error {
     // 创建子 Span
-    ctx, span := tracing.StartSpan(ctx, "do.work", 
+    ctx, span := tracing.StartSpan(ctx, "do.work",
         trace.WithSpanKind(trace.SpanKindInternal))
     defer span.End()
 
@@ -122,19 +161,22 @@ func doWork(ctx context.Context) error {
 }
 ```
 
+在有东西被安装之前，`GetTracer` 返回的是 noop tracer，因此这样写的代码在完全没有配置
+链路追踪的进程里也能原样运行。
+
 ### 追踪上下文传播
 
 ```go
-import tracing "github.com/soulteary/tracing-kit"
+import tracing "github.com/soulteary/tracing-kit/v2"
 
 // 从传入请求的 Header 中提取追踪上下文
 func handleIncomingRequest(headers map[string]string) {
     ctx := tracing.ExtractTraceContext(context.Background(), headers)
-    
+
     // 使用提取的上下文继续
     ctx, span := tracing.StartSpan(ctx, "handle.request")
     defer span.End()
-    
+
     // 处理请求...
 }
 
@@ -142,23 +184,9 @@ func handleIncomingRequest(headers map[string]string) {
 func makeOutgoingRequest(ctx context.Context) {
     headers := make(map[string]string)
     tracing.InjectTraceContext(ctx, headers)
-    
+
     // 使用 headers 发送 HTTP 请求
     // req.Header.Set("traceparent", headers["traceparent"])
-}
-
-// 分布式追踪的往返示例
-func propagateTrace(ctx context.Context) {
-    // 服务 A：注入上下文
-    headers := make(map[string]string)
-    tracing.InjectTraceContext(ctx, headers)
-    
-    // ... 发送请求到服务 B ...
-    
-    // 服务 B：提取上下文并继续追踪
-    ctx = tracing.ExtractTraceContext(context.Background(), headers)
-    ctx, span := tracing.StartSpan(ctx, "service.b.operation")
-    defer span.End()
 }
 ```
 
@@ -166,7 +194,7 @@ func propagateTrace(ctx context.Context) {
 
 ```go
 import (
-    tracing "github.com/soulteary/tracing-kit"
+    tracing "github.com/soulteary/tracing-kit/v2"
     "net/http"
 )
 
@@ -180,18 +208,18 @@ func TracingMiddleware(next http.Handler) http.Handler {
             }
         }
         ctx := tracing.ExtractTraceContext(r.Context(), headers)
-        
+
         // 为此请求开始 Span
         ctx, span := tracing.StartSpan(ctx, r.Method+" "+r.URL.Path)
         defer span.End()
-        
+
         // 设置请求属性
         tracing.SetSpanAttributes(span, map[string]string{
             "http.method": r.Method,
             "http.url":    r.URL.String(),
             "http.host":   r.Host,
         })
-        
+
         // 使用带追踪的上下文继续
         next.ServeHTTP(w, r.WithContext(ctx))
     })
@@ -200,33 +228,59 @@ func TracingMiddleware(next http.Handler) http.Handler {
 
 ## API 参考
 
-### Tracer 初始化
+### 根包 —— `github.com/soulteary/tracing-kit/v2`
 
-| 函数 | 描述 |
-|------|------|
-| `InitTracerWithConfig(cfg)` | 从 `Config` 初始化 —— TLS、采样、导出超时 |
-| `InitTracer(serviceName, version, endpoint)` | 使用 OTLP HTTP 导出器初始化 Tracer |
-| `Shutdown(ctx)` | 优雅关闭 Tracer Provider |
-| `GetTracer()` | 获取全局 Tracer（未初始化时返回 noop） |
-| `IsEnabled()` | 检查追踪是否已启用 |
-
-### Span 操作
+Span 操作：
 
 | 函数 | 描述 |
 |------|------|
 | `StartSpan(ctx, name, opts...)` | 开始一个新的 Span |
 | `SetSpanAttributes(span, attrs)` | 在 Span 上设置字符串属性 |
 | `SetSpanAttributesFromMap(span, attrs)` | 在 Span 上设置混合类型属性 |
-| `RecordError(span, err)` | 记录错误并设置错误状态 |
+| `RecordError(span, err)` | 记录错误并设置错误状态；err 为 nil 时忽略 |
 | `SetSpanStatus(span, code, description)` | 设置 Span 状态 |
 | `GetSpanFromContext(ctx)` | 从上下文中获取 Span |
 
-### 上下文传播
+上下文传播：
 
 | 函数 | 描述 |
 |------|------|
+| `SetDefaultPropagator()` | 安装 W3C trace context + baggage propagator |
 | `ExtractTraceContext(ctx, headers)` | 从 Header 中提取追踪上下文 |
 | `InjectTraceContext(ctx, headers)` | 将追踪上下文注入 Header |
+
+已安装的 provider：
+
+| 函数 | 描述 |
+|------|------|
+| `Install(p, serviceName)` | 进程级安装一个 `Provider`，并退休它替换掉的那一个 |
+| `InstallDisabled(p, serviceName)` | 同上，但 `IsEnabled` 报告 false |
+| `Uninstall()` | 卸下已安装的 provider，但不关闭它 |
+| `Shutdown(ctx)` | 优雅关闭已安装的 provider |
+| `GetTracer()` | 已安装的 Tracer（没有安装时返回 noop） |
+| `IsEnabled()` | 是否安装了一个预期会导出的 provider |
+
+`Provider` 就是 `trace.TracerProvider` 加上 `Shutdown(ctx) error`。
+`*sdktrace.TracerProvider` 满足它。
+
+### `.../v2/otlp`
+
+| 函数 | 描述 |
+|------|------|
+| `InitTracerWithConfig(cfg)` | 从 `Config` 构建导出器和 provider 并安装 |
+| `InitTracer(serviceName, version, endpoint)` | 三参数形式；明文导出，全量采样 |
+| `NewExporter(ctx, cfg)` | 只要 OTLP/HTTP 导出器，provider 由你自己组装 |
+| `Config.Sampler()` | 该 `Config` 所要求的采样器 |
+| `Config.Resource(ctx)` | 该 `Config` 所要求的 resource |
+
+### `.../v2/tracingtest`
+
+| 函数 | 描述 |
+|------|------|
+| `Setup(t)` | 安装内存 Tracer；自行注册清理 |
+| `Teardown()` | 再把它卸下 |
+| `Shutdown(tp)` | 关闭 provider，忽略错误 |
+| `ForceFlush(tp)` | 刷新 provider 的待发 Span，忽略错误 |
 
 ## 配置
 
@@ -234,7 +288,7 @@ func TracingMiddleware(next http.Handler) http.Handler {
 type Config struct {
     ServiceName    string      // 必填
     ServiceVersion string
-    OTLPEndpoint   string      // 为空则禁用链路追踪
+    Endpoint       string      // 为空则禁用链路追踪
     Insecure       bool        // 明文 HTTP 导出
     TLSConfig      *tls.Config // Insecure 为 false 时使用；nil 表示系统默认
     SampleRatio    float64     // 0 表示 DefaultSampleRatio（0.1）
@@ -245,9 +299,9 @@ type Config struct {
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `ServiceName` | — | 必填 |
+| `ServiceName` | — | 必填；导出的 resource 中会被 `OTEL_SERVICE_NAME` 覆盖 |
 | `ServiceVersion` | 空 | 作为 service version 属性上报 |
-| `OTLPEndpoint` | 空 | 为空则禁用链路追踪并返回空实现 provider |
+| `Endpoint` | 空 | 为空则禁用链路追踪，返回一个什么都不记录的 provider |
 | `Insecure` | `false` | 见下方警告 |
 | `TLSConfig` | `nil` | `Insecure` 为 false 时，nil 表示系统默认 |
 | `SampleRatio` | `DefaultSampleRatio`（0.1） | **零值表示默认值**，不是"不采样" |
@@ -262,13 +316,13 @@ collector 经由 loopback 或可信本地网络可达时使用它：
 
 ```go
 // 开发环境
-cfg := tracing.Config{ServiceName: "svc", OTLPEndpoint: "localhost:4318", Insecure: true}
+cfg := otlp.Config{ServiceName: "svc", Endpoint: "localhost:4318", Insecure: true}
 
 // 生产环境
-cfg = tracing.Config{
-    ServiceName:  "svc",
-    OTLPEndpoint: "collector.internal:4318",
-    TLSConfig:    &tls.Config{MinVersion: tls.VersionTLS12},
+cfg = otlp.Config{
+    ServiceName: "svc",
+    Endpoint:    "collector.internal:4318",
+    TLSConfig:   &tls.Config{MinVersion: tls.VersionTLS12},
 }
 ```
 
@@ -281,7 +335,7 @@ cfg = tracing.Config{
 要一条都不记录，请明说：
 
 ```go
-cfg := tracing.Config{ServiceName: "svc", OTLPEndpoint: endpoint, SampleNone: true}
+cfg := otlp.Config{ServiceName: "svc", Endpoint: endpoint, SampleNone: true}
 ```
 
 ### 从环境变量读取端点
@@ -289,17 +343,21 @@ cfg := tracing.Config{ServiceName: "svc", OTLPEndpoint: endpoint, SampleNone: tr
 本库没有内置的环境变量处理，请自己读取：
 
 ```go
-cfg := tracing.Config{
+cfg := otlp.Config{
     ServiceName:    os.Getenv("OTEL_SERVICE_NAME"),
     ServiceVersion: buildVersion,
-    OTLPEndpoint:   os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    Endpoint:       os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
     SampleRatio:    0.1,
 }
 ```
 
+`OTEL_SERVICE_NAME` 和 `OTEL_RESOURCE_ATTRIBUTES` 由 SDK 自己的 resource 探测读取，
+而它在 `ServiceName` 之后生效，因此在 collector 看到的 resource 里是它说了算。
+`ServiceName` 仍然用于命名 Tracer，也就是 instrumentation scope 里显示的那个名字。
+
 ## 测试覆盖率
 
-在本仓库上用 `go test ./... -cover` 实测：**语句覆盖率 99.1%**。
+在本仓库上用 `go test -race ./... -covermode=atomic` 实测：三个包**语句覆盖率均为 100%**。
 
 ```bash
 go test ./... -coverprofile=coverage.out -covermode=atomic
@@ -308,38 +366,80 @@ go tool cover -func=coverage.out
 
 ## 测试支持
 
-该库提供了用于单元测试的辅助函数：
-
 ```go
 import (
-    tracing "github.com/soulteary/tracing-kit"
     "testing"
+
+    tracing "github.com/soulteary/tracing-kit/v2"
+    "github.com/soulteary/tracing-kit/v2/tracingtest"
 )
 
 func TestMyTracedFunction(t *testing.T) {
-    // 使用内存导出器设置测试 Tracer
-    // SetupTestTracer 接收 tracing.TestingT（Helper + Cleanup），
-    // *testing.T 满足该接口，因此自定义测试框架也可以传自己的实现。
-    tp, exporter := tracing.SetupTestTracer(t)
-    defer func() {
-        tracing.ShutdownTracerProvider(tp)
-        tracing.TeardownTestTracer()
-    }()
+    // 使用内存导出器设置测试 Tracer。Setup 会自行注册清理，
+    // 因此不需要任何 defer。
+    //
+    // 它接收 tracingtest.TestingT（Helper + Cleanup），*testing.T 满足
+    // 该接口，因此自定义测试框架也可以传自己的实现。
+    tp, exporter := tracingtest.Setup(t)
 
     // 运行你的追踪代码
-    ctx := context.Background()
-    ctx, span := tracing.StartSpan(ctx, "test.operation")
+    ctx, span := tracing.StartSpan(context.Background(), "test.operation")
     span.End()
 
     // 刷新并验证 Span
-    tracing.ForceFlushTracerProvider(tp)
+    tracingtest.ForceFlush(tp)
     spans := exporter.GetSpans()
-    
+
     if len(spans) == 0 {
         t.Fatal("预期至少有一个 Span")
     }
 }
 ```
+
+## 升级说明（v2.0.0）
+
+所有人的 import path 都要改，导出器和测试辅助函数从根包搬走。完整细节（包括这么做换来了
+什么）见 [CHANGELOG.md](CHANGELOG.md)。
+
+```go
+// 改动前
+import tracing "github.com/soulteary/tracing-kit"
+
+tp, err := tracing.InitTracerWithConfig(tracing.Config{
+    ServiceName:  "svc",
+    OTLPEndpoint: endpoint,
+})
+
+// 改动后
+import (
+    tracing "github.com/soulteary/tracing-kit/v2"
+    "github.com/soulteary/tracing-kit/v2/otlp"
+)
+
+tp, err := otlp.InitTracerWithConfig(otlp.Config{
+    ServiceName: "svc",
+    Endpoint:    endpoint,
+})
+```
+
+| v1.5.1 | v2.0.0 |
+|---|---|
+| `tracing.InitTracer` | `otlp.InitTracer` |
+| `tracing.InitTracerWithConfig` | `otlp.InitTracerWithConfig` |
+| `tracing.Config` | `otlp.Config` |
+| `tracing.Config.OTLPEndpoint` | `otlp.Config.Endpoint` |
+| `tracing.DefaultSampleRatio` | `otlp.DefaultSampleRatio` |
+| `tracing.SetupTestTracer` | `tracingtest.Setup` |
+| `tracing.TeardownTestTracer` | `tracingtest.Teardown` |
+| `tracing.ShutdownTracerProvider` | `tracingtest.Shutdown` |
+| `tracing.ForceFlushTracerProvider` | `tracingtest.ForceFlush` |
+| `tracing.TestingT` | `tracingtest.TestingT` |
+
+根包里的其余部分 —— `StartSpan`、各个属性与状态辅助函数、`ExtractTraceContext`、
+`InjectTraceContext`、`GetTracer`、`IsEnabled` 和 `Shutdown` —— 名字、签名和行为都不变。
+
+没有保留任何兼容 shim。给搬走的初始化函数留一个 shim，就必须 import OTLP 导出器，
+那会把 gRPC 和 protobuf 重新链接回每一个使用者，拆分的收益全部还回去。
 
 ## 升级说明（v1.5.1）
 
