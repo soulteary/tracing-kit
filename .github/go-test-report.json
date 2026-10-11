@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "tests": {
+    "total": 99,
+    "passed": 99,
+    "failed": 0,
+    "skipped": 0
+  },
+  "coverage": {
+    "covered_statements": 131,
+    "total_statements": 131,
+    "percentage": 100,
+    "threshold": 0
+  },
+  "packages": [
+    {
+      "name": ".",
+      "status": "pass",
+      "tests": 68,
+      "failed": 0,
+      "coverage": 100
+    },
+    {
+      "name": "otlp",
+      "status": "pass",
+      "tests": 24,
+      "failed": 0,
+      "coverage": 100
+    },
+    {
+      "name": "tracingtest",
+      "status": "pass",
+      "tests": 7,
+      "failed": 0,
+      "coverage": 100
+    }
+  ],
+  "failures": null
+}
