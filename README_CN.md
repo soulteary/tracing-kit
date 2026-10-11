@@ -484,7 +484,7 @@ tp, err := otlp.InitTracerWithConfig(otlp.Config{
 
 ## 环境要求
 
-- **Go 1.27+**（`go.mod` 声明 `go 1.27.0`）
+- **Go 1.27+**（`go.mod` 声明 `go 1.27.2`）
 - OpenTelemetry Go SDK v1.46.0+（`go.mod` 要求 `go.opentelemetry.io/otel` v1.46.0）
 
 ## 许可证
