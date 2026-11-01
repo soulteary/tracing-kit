@@ -10,6 +10,19 @@ also changes the module path. The current one is
 
 ## [Unreleased]
 
+## [2.0.3] — 2026-11-01
+
+### Changed
+
+- Update compatible gRPC, grpc-gateway, genproto and network dependencies for
+  the optional OTLP exporter; OpenTelemetry remains at v1.47.0.
+- Align pinned Go test report and Go Report Card CLIs with their released
+  wrappers (v1.1.3 and v1.1.4).
+- Correct the documented Go and OpenTelemetry requirements.
+
+The public API and module path remain unchanged. All packages pass the
+race-enabled suite with 100% statement coverage.
+
 ## [2.0.0] — 2026-09-21
 
 ### Changed — BREAKING
