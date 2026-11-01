@@ -456,8 +456,8 @@ and gives back the entire benefit of moving it.
 
 ## Requirements
 
-- **Go 1.27.2+** (`go.mod` declares `go 1.27.2`)
-- OpenTelemetry Go SDK v1.46.0+ (`go.mod` requires `go.opentelemetry.io/otel` v1.46.0)
+- **Go 1.27.3+** (`go.mod` declares `go 1.27.3`)
+- OpenTelemetry Go SDK v1.47.0+ (`go.mod` requires `go.opentelemetry.io/otel` v1.47.0)
 
 ## License
 
