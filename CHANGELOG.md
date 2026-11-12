@@ -10,6 +10,15 @@ also changes the module path. The current one is
 
 ## [Unreleased]
 
+## [2.0.4] — 2026-11-13
+
+### Changed
+
+- Require Go 1.27.4, which carries security fixes to cgo, the go command, the
+  compiler, the linker and `net/http`.
+
+The module path and the public API are unchanged.
+
 ## [2.0.3] — 2026-11-01
 
 ### Changed
