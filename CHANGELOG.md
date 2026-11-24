@@ -10,6 +10,15 @@ also changes the module path. The current one is
 
 ## [Unreleased]
 
+### Changed
+
+- Update OpenTelemetry support dependencies and the optional OTLP
+  exporter's transport dependencies, including the auto SDK, grpc-gateway,
+  genproto and networking modules. OpenTelemetry remains v1.47.0 and the Go
+  requirement remains 1.27.4.
+
+Prepared for v2.0.5. See the [candidate release notes](.github/releases/v2.0.5.md).
+
 ## [2.0.4] — 2026-11-13
 
 ### Changed
