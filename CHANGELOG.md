@@ -10,6 +10,14 @@ also changes the module path. The current one is
 
 ## [Unreleased]
 
+### Changed
+
+- Update grpc-gateway, the OpenTelemetry auto SDK, genproto and networking
+  requirements used by the optional OTLP exporter. OpenTelemetry remains
+  v1.47.0 and the Go requirement remains 1.27.4.
+
+Prepared for v2.0.5. See the [candidate release notes](.github/releases/v2.0.5.md).
+
 ## [2.0.4] — 2026-11-13
 
 ### Changed
